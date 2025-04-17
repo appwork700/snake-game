@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game - Improved Pause</title>
+    <style>
+        /* CSS is the same as the previous 'Smooth Snake' version, */
+        /* EXCEPT we remove the .paused-overlay style */
+        body {
+            font-family: sans-serif; display: flex; flex-direction: column;
+            align-items: center; min-height: 95vh; background-color: #e0e0e0;
+            margin: 0; padding: 15px;
+        }
+        h1 { margin-bottom: 5px; color: #333; }
+        .game-controls-area {
+            display: flex; flex-direction: column; align-items: center;
+            width: 600px; margin-bottom: 10px;
+        }
+        .game-info {
+            display: flex; justify-content: space-between; width: 100%;
+            margin-bottom: 8px; align-items: center; flex-wrap: wrap;
+        }
+        .score-container { font-size: 1.1em; color: #444; margin-right: 10px; }
+        .shape-info { font-size: 0.9em; color: #555; margin-right: 10px; white-space: nowrap; }
+        #currentShapeName { font-weight: bold; }
+        .buttons-container {
+            display: flex; justify-content: center; align-items: center;
+            flex-wrap: wrap; gap: 5px; width: 100%;
+        }
+        .speed-controls button, #pauseButton, #changeShapeButton {
+            padding: 4px 8px; cursor: pointer; border: 1px solid #888;
+            background-color: #f0f0f0; border-radius: 4px;
+            transition: background-color 0.2s, border-color 0.2s;
+            font-size: 0.9em; min-width: 50px; text-align: center; flex-shrink: 0;
+        }
+        .speed-controls button:hover, #pauseButton:hover, #changeShapeButton:hover { background-color: #ddd; }
+        .speed-controls button.active { background-color: #6c757d; border-color: #5a6268; font-weight: bold; color: #fff; }
+        #pauseButton { background-color: #ffc107; border-color: #c79100; }
+        #pauseButton:hover { background-color: #e0a800; }
+        #changeShapeButton { background-color: #17a2b8; border-color: #117a8b; color: white; }
+        #changeShapeButton:hover { background-color: #138496; }
+        .canvas-container {
+            position: relative; border: 5px solid #555; background-color: #c8e6c9;
+            width: 600px; height: 600px; box-shadow: 3px 3px 8px rgba(0,0,0,0.2); margin-top: 5px;
+        }
+        #gameCanvas { display: block; }
+        .controls-info { margin-top: 15px; font-size: 0.9em; color: #666; text-align: center; }
+        .game-overlay { /* Now only used for Game Over */
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; color: white;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            text-align: center; font-size: 1.5em; backdrop-filter: blur(2px);
+        }
+        .game-over { background-color: rgba(0, 0, 0, 0.75); }
+        /* Removed .paused-overlay styles */
+        .game-over h2 { margin-bottom: 10px; color: #ff6b6b; }
+        .game-over p { margin-bottom: 20px; }
+        #restartButton {
+            padding: 10px 20px; font-size: 1em; cursor: pointer; background-color: #4CAF50;
+            color: white; border: none; border-radius: 5px; transition: background-color 0.3s ease;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2); margin-top: 10px;
+        }
+        #restartButton:hover { background-color: #45a049; }
+        .game-overlay.active { display: flex; } /* Only applies to game-over now */
+    </style>
+</head>
+<body>
+     <!-- HTML Structure (Removed #pausedScreen div) -->
+    <h1>Snake Game</h1>
+    <div class="game-controls-area">
+        <div class="game-info">
+            <div class="score-container">
+                Level: <span id="level">1</span> | Score: <span id="score">0</span>
+            </div>
+             <div class="shape-info">
+                Style: <span id="currentShapeName">Classic</span>
+            </div>
+        </div>
+        <div class="buttons-container">
+            <div class="speed-controls">
+                Speed:
+                <button id="speedAuto">Auto</button>
+                <button id="speedSlow">Slow</button>
+                <button id="speedMedium">Medium</button>
+                <button id="speedFast">Fast</button>
+            </div>
+            <button id="pauseButton">Pause</button>
+            <button id="changeShapeButton">Style</button>
+        </div>
+    </div>
+    <div class="canvas-container">
+        <canvas id="gameCanvas" width="600" height="600"></canvas>
+        <!-- Removed #pausedScreen div -->
+        <div id="gameOverScreen" class="game-overlay game-over"> <!-- Game Over still uses overlay -->
+            <h2>Game Over!</h2>
+            <p>Final Score: <span id="finalScore">0</span> (Level <span id="finalLevel">1</span>)</p>
+            <button id="restartButton">Play Again</button>
+        </div>
+    </div>
+    <p class="controls-info">Use Arrow Keys or WASD to move | 'P' to Pause/Resume</p>
+
+    <script>
+        // --- JavaScript Game Logic ---
+
+        // --- Setup (Elements, Constants, Shape Definitions, State - same as before) ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const finalLevelDisplay = document.getElementById('finalLevel');
+        const restartButton = document.getElementById('restartButton');
+        const pauseButton = document.getElementById('pauseButton');
+        // No pausedScreen element needed
+        const speedAutoButton = document.getElementById('speedAuto');
+        const speedSlowButton = document.getElementById('speedSlow');
+        const speedMediumButton = document.getElementById('speedMedium');
+        const speedFastButton = document.getElementById('speedFast');
+        const speedButtons = [speedAutoButton, speedSlowButton, speedMediumButton, speedFastButton];
+        const changeShapeButton = document.getElementById('changeShapeButton');
+        const currentShapeNameDisplay = document.getElementById('currentShapeName');
+
+        const canvasWidth = canvas.width; const canvasHeight = canvas.height; const gridSize = 20;
+        const tileCountX = canvasWidth / gridSize; const tileCountY = canvasHeight / gridSize;
+
+        const SPEED_AUTO = 'auto'; const SPEED_SLOW_VAL = 220; const SPEED_MEDIUM_VAL = 150; const SPEED_FAST_VAL = 90;
+        const INITIAL_AUTO_SPEED = 200; const MIN_AUTO_SPEED = 50; const SCORE_PER_LEVEL_UP = 3; const AUTO_SPEED_INCREMENT = 6;
+
+        const snakeShapes = [
+            { name: 'Classic', body: '#8B4513', head: '#654321', border: '#5C3317' },
+            { name: 'Green', body: '#2ECC71', head: '#27AE60', border: '#16A085' },
+            { name: 'Blue', body: '#3498DB', head: '#2980B9', border: '#1F618D' },
+            { name: 'Purple', body: '#9B59B6', head: '#8E44AD', border: '#6C3483' },
+            { name: 'Orange', body: '#E67E22', head: '#D35400', border: '#A04000' },
+            { name: 'Yellow', body: '#F1C40F', head: '#F39C12', border: '#B7791F' },
+            { name: 'Crimson', body: '#E74C3C', head: '#C0392B', border: '#A93226' },
+            { name: 'Teal', body: '#1ABC9C', head: '#16A085', border: '#0E6251' },
+            { name: 'Pink', body: '#FF69B4', head: '#FF1493', border: '#C71585'},
+            { name: 'Lime', body: '#ADFF2F', head: '#7FFF00', border: '#556B2F'},
+        ];
+
+        const canvasBackgroundColor = '#c8e6c9'; const foodColor = '#DC143C'; const foodBorderColor = '#8B0000';
+        const eyeColor = 'white'; const pupilColor = 'black'; const mouthColor = 'rgba(0, 0, 0, 0.7)';
+        const SNAKE_LINE_WIDTH_RATIO = 0.8;
+
+        let snake = []; let dx = 1; let dy = 0; let food = { x: 0, y: 0 };
+        let score = 0; let level = 1; let changingDirection = false; let gameInterval;
+        let currentSpeed = INITIAL_AUTO_SPEED; let manualSpeedSetting = SPEED_AUTO;
+        let currentShapeIndex = 0; let isGameOver = false; let isPaused = false;
+
+
+        function initializeGame() { /* ... same logic ... */
+            snake = [{ x: Math.floor(tileCountX / 2), y: Math.floor(tileCountY / 2) }];
+            dx = 1; dy = 0; score = 0; level = 1;
+            scoreDisplay.textContent = score; levelDisplay.textContent = level;
+            createFood();
+            changingDirection = false; isGameOver = false; isPaused = false;
+            pauseButton.textContent = 'Pause';
+            gameOverScreen.classList.remove('active');
+            // No pausedScreen to hide
+            currentShapeIndex = 0; updateShapeDisplay();
+            manualSpeedSetting = SPEED_AUTO; currentSpeed = calculateAutoSpeed(level);
+            applySpeedChange(); // Applies speed and starts interval
+            console.log("Game Start - Mode: Auto, Speed:", currentSpeed);
+        }
+
+        function calculateAutoSpeed(currentLevel) { /* ... same ... */ return Math.max(MIN_AUTO_SPEED, INITIAL_AUTO_SPEED - (currentLevel - 1) * AUTO_SPEED_INCREMENT); }
+
+        // --- MODIFIED applySpeedChange ---
+        function applySpeedChange() {
+            // Update button visual state (Always do this)
+            speedButtons.forEach(button => button.classList.remove('active'));
+            if (manualSpeedSetting === SPEED_AUTO) speedAutoButton.classList.add('active');
+            else if (manualSpeedSetting === 'slow') speedSlowButton.classList.add('active');
+            else if (manualSpeedSetting === 'medium') speedMediumButton.classList.add('active');
+            else if (manualSpeedSetting === 'fast') speedFastButton.classList.add('active');
+
+            // Restart the game loop ONLY if NOT paused and NOT game over
+            // This prevents the interval from running during pause but allows
+            // speed selection to be registered.
+            clearInterval(gameInterval);
+            if (!isPaused && !isGameOver) {
+                gameInterval = setInterval(gameLoop, currentSpeed);
+            }
+            // Log regardless of pause state
+            console.log(`Speed Applied - Mode: ${manualSpeedSetting}, Interval: ${currentSpeed}ms`);
+        }
+
+        // --- MODIFIED gameLoop ---
+        function gameLoop() {
+            // Game logic updates only run if not paused/game over
+            if (!isPaused && !isGameOver) {
+                changingDirection = false;
+                moveSnake();
+                checkCollision();
+                 // Note: Collision might set isGameOver, stopping the next loop's update
+            }
+
+             // Drawing always happens, even if paused, to show current state
+             clearCanvas();
+             drawFood();
+             drawSnake(); // Draws the snake in its current position/style
+
+             // Draw "PAUSED" text on top if paused
+             if (isPaused) {
+                 drawPausedIndicator();
+             }
+
+            // If game over happened *during* this loop, stop immediately
+            if (isGameOver) {
+                clearInterval(gameInterval); // Ensure loop stops
+                // Game over screen is handled by checkCollision/gameOver func
+            }
+        }
+
+        function clearCanvas() { /* ... same ... */ ctx.fillStyle = canvasBackgroundColor; ctx.fillRect(0, 0, canvasWidth, canvasHeight); }
+        function moveSnake() { /* ... same level/speed update logic ... */
+             const head = { x: snake[0].x + dx, y: snake[0].y + dy }; snake.unshift(head);
+             const didEatFood = snake[0].x === food.x && snake[0].y === food.y;
+             if (didEatFood) {
+                 score++; scoreDisplay.textContent = score;
+                 const previousLevel = level; level = Math.floor(score / SCORE_PER_LEVEL_UP) + 1; levelDisplay.textContent = level;
+                 if (manualSpeedSetting === SPEED_AUTO) {
+                     const targetSpeed = calculateAutoSpeed(level);
+                     if (targetSpeed !== currentSpeed) { console.log(`Auto Level Up: ${level}, New Speed: ${targetSpeed}ms`); currentSpeed = targetSpeed; applySpeedChange(); }
+                 }
+                 createFood();
+             } else { snake.pop(); }
+        }
+        function isFoodOnSnake(position) { /* ... same ... */ return snake.some(segment => segment.x === position.x && segment.y === position.y); }
+        function checkCollision() { /* ... same ... */
+            const head = snake[0]; const hitLeftWall = head.x < 0; const hitRightWall = head.x >= tileCountX; const hitTopWall = head.y < 0; const hitBottomWall = head.y >= tileCountY;
+            if (hitLeftWall || hitRightWall || hitTopWall || hitBottomWall) { gameOver(); return; } // Return needed here
+            // Self collision check needs to consider the head only against the rest of the body
+            for (let i = 1; i < snake.length; i++) {
+                 // Ensure head exists before checking (avoid errors on very fast direction changes maybe)
+                 if (snake[0] && head.x === snake[i].x && head.y === snake[i].y) {
+                      gameOver(); return; // Return needed here
+                 }
+            }
+        }
+        function gameOver() { /* ... same (no pause screen reference) ... */
+             isGameOver = true; isPaused = false; clearInterval(gameInterval); finalScoreDisplay.textContent = score; finalLevelDisplay.textContent = level; gameOverScreen.classList.add('active'); pauseButton.textContent = 'Pause'; console.log(`Game Over! Score: ${score}, Level: ${level}, Mode: ${manualSpeedSetting}, Final Speed: ${currentSpeed}ms`);
+        }
+        function handleKeyDown(event) { /* ... same (still blocks movement if paused) ... */
+            if (event.key.toLowerCase() === 'p') { event.preventDefault(); togglePause(); return; }
+            if (changingDirection || isGameOver || isPaused) return; // Keep blocking movement keys when paused
+            const keyPressed = event.key; const goingUp = dy === -1; const goingDown = dy === 1; const goingLeft = dx === -1; const goingRight = dx === 1; let directionChanged = false;
+            if ((keyPressed === 'ArrowUp' || keyPressed.toLowerCase() === 'w') && !goingDown) { dx = 0; dy = -1; directionChanged = true; }
+            else if ((keyPressed === 'ArrowDown' || keyPressed.toLowerCase() === 's') && !goingUp) { dx = 0; dy = 1; directionChanged = true; }
+            else if ((keyPressed === 'ArrowLeft' || keyPressed.toLowerCase() === 'a') && !goingRight) { dx = -1; dy = 0; directionChanged = true; }
+            else if ((keyPressed === 'ArrowRight' || keyPressed.toLowerCase() === 'd') && !goingLeft) { dx = 1; dy = 0; directionChanged = true; }
+            if (directionChanged) { changingDirection = true; if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(keyPressed)) { event.preventDefault(); } }
+        }
+        function handleSpeedButtonClick(event) { /* ... same logic, relies on modified applySpeedChange ... */
+             const clickedButton = event.target; let newSpeedSetting = SPEED_AUTO; let newIntervalSpeed = calculateAutoSpeed(level);
+             if (clickedButton === speedSlowButton) { newSpeedSetting = 'slow'; newIntervalSpeed = SPEED_SLOW_VAL; }
+             else if (clickedButton === speedMediumButton) { newSpeedSetting = 'medium'; newIntervalSpeed = SPEED_MEDIUM_VAL; }
+             else if (clickedButton === speedFastButton) { newSpeedSetting = 'fast'; newIntervalSpeed = SPEED_FAST_VAL; }
+             if (manualSpeedSetting !== newSpeedSetting || currentSpeed !== newIntervalSpeed) { manualSpeedSetting = newSpeedSetting; currentSpeed = newIntervalSpeed; applySpeedChange(); }
+        }
+
+        // --- MODIFIED handleChangeShapeClick ---
+        function handleChangeShapeClick() {
+            currentShapeIndex = (currentShapeIndex + 1) % snakeShapes.length;
+            updateShapeDisplay();
+            // If paused, force a redraw immediately to show the new style
+            if (isPaused) {
+                 redrawStaticScene();
+            }
+            // If running, the change will appear on the next gameLoop cycle
+        }
+
+        function updateShapeDisplay() { /* ... same ... */ if (snakeShapes[currentShapeIndex]) { currentShapeNameDisplay.textContent = snakeShapes[currentShapeIndex].name; } }
+
+        // --- MODIFIED togglePause ---
+        function togglePause() {
+            if (isGameOver) return;
+            isPaused = !isPaused;
+
+            if (isPaused) {
+                pauseButton.textContent = 'Resume';
+                clearInterval(gameInterval); // Stop game logic updates
+                // No overlay to show
+                console.log("Game Paused");
+                redrawStaticScene(); // Draw the paused state once
+                 drawPausedIndicator(); // Ensure indicator shows immediately
+            } else {
+                pauseButton.textContent = 'Pause';
+                // No overlay to hide
+                if (!isGameOver) {
+                    // Restart game logic updates with the current speed
+                    clearInterval(gameInterval); // Clear just in case
+                    gameInterval = setInterval(gameLoop, currentSpeed);
+                    console.log("Game Resumed - Speed:", currentSpeed);
+                    // Requesting frame might cause duplicate drawing if interval is fast
+                    // requestAnimationFrame(gameLoop); // Removed to rely on interval
+                }
+            }
+        }
+
+        // --- NEW Function to draw paused indicator ---
+        function drawPausedIndicator() {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)"; // Semi-transparent background for text
+            ctx.font = "bold 30px sans-serif";
+            ctx.textAlign = "center";
+            const text = "PAUSED";
+            const textWidth = ctx.measureText(text).width;
+            const padding = 10;
+            // Draw background rect top-center
+             ctx.fillRect(canvasWidth / 2 - textWidth / 2 - padding, 10, textWidth + padding * 2, 40 + padding);
+
+            // Draw text
+            ctx.fillStyle = "white";
+            ctx.fillText(text, canvasWidth / 2, 45); // Adjust Y position as needed
+        }
+
+        // --- NEW Function to redraw scene statically (used for shape change while paused) ---
+        function redrawStaticScene() {
+             clearCanvas();
+             drawFood();
+             drawSnake();
+        }
+
+
+        // --- Drawing Functions (drawSnake, drawFood - same as previous 'Smooth Snake' version) ---
+        function drawSnake() { /* ... same smooth snake drawing logic ... */
+             if (snake.length === 0) return; const shape = snakeShapes[currentShapeIndex] || snakeShapes[0]; const segmentWidth = gridSize * SNAKE_LINE_WIDTH_RATIO; const headRadius = segmentWidth / 2;
+             ctx.beginPath(); ctx.strokeStyle = shape.body; ctx.lineWidth = segmentWidth; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+             const headCenterX = snake[0].x * gridSize + gridSize / 2; const headCenterY = snake[0].y * gridSize + gridSize / 2;
+             ctx.moveTo(headCenterX, headCenterY);
+             for (let i = 1; i < snake.length; i++) { const centerX = snake[i].x * gridSize + gridSize / 2; const centerY = snake[i].y * gridSize + gridSize / 2; ctx.lineTo(centerX, centerY); }
+             if (snake.length > 1) { ctx.stroke(); }
+             ctx.fillStyle = shape.head; ctx.beginPath(); ctx.arc(headCenterX, headCenterY, headRadius, 0, Math.PI * 2); ctx.fill();
+             const eyeRadius = headRadius * 0.25; const pupilRadius = eyeRadius * 0.5; let eyeOffsetX = 0, eyeOffsetY = 0; let mouthStartX = 0, mouthStartY = 0, mouthEndX = 0, mouthEndY = 0; const eyeDist = headRadius * 0.4; const mouthDist = headRadius * 0.6;
+             if (dx === 1) { eyeOffsetX = 0; eyeOffsetY = eyeDist; mouthStartX = headCenterX + mouthDist * 0.8; mouthStartY = headCenterY - headRadius * 0.2; mouthEndX = mouthStartX; mouthEndY = headCenterY + headRadius * 0.2; }
+             else if (dx === -1) { eyeOffsetX = 0; eyeOffsetY = eyeDist; mouthStartX = headCenterX - mouthDist * 0.8; mouthStartY = headCenterY - headRadius * 0.2; mouthEndX = mouthStartX; mouthEndY = headCenterY + headRadius * 0.2; }
+             else if (dy === 1) { eyeOffsetX = eyeDist; eyeOffsetY = 0; mouthStartX = headCenterX - headRadius * 0.2; mouthStartY = headCenterY + mouthDist * 0.8; mouthEndX = headCenterX + headRadius * 0.2; mouthEndY = mouthStartY; }
+             else { eyeOffsetX = eyeDist; eyeOffsetY = 0; mouthStartX = headCenterX - headRadius * 0.2; mouthStartY = headCenterY - mouthDist * 0.8; mouthEndX = headCenterX + headRadius * 0.2; mouthEndY = mouthStartY; }
+             const eye1X = headCenterX + eyeOffsetX; const eye1Y = headCenterY + eyeOffsetY; const eye2X = headCenterX - eyeOffsetX; const eye2Y = headCenterY - eyeOffsetY;
+             ctx.fillStyle = eyeColor; ctx.beginPath(); ctx.arc(eye1X, eye1Y, eyeRadius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(eye2X, eye2Y, eyeRadius, 0, Math.PI * 2); ctx.fill();
+             ctx.fillStyle = pupilColor; ctx.beginPath(); ctx.arc(eye1X, eye1Y, pupilRadius, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(eye2X, eye2Y, pupilRadius, 0, Math.PI * 2); ctx.fill();
+             ctx.strokeStyle = mouthColor; ctx.lineWidth = Math.max(1, headRadius * 0.1); ctx.beginPath(); ctx.moveTo(mouthStartX, mouthStartY); ctx.lineTo(mouthEndX, mouthEndY); ctx.stroke();
+             ctx.lineWidth = 1;
+        }
+        function drawFood() { /* ... same circle food drawing logic ... */
+            const radius = gridSize / 2 * 0.8; const centerX = food.x * gridSize + gridSize / 2; const centerY = food.y * gridSize + gridSize / 2;
+            ctx.fillStyle = foodColor; ctx.strokeStyle = foodBorderColor; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(centerX, centerY, radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+        function createFood() { /* ... same ... */ let newFoodPosition; do { newFoodPosition = { x: Math.floor(Math.random() * tileCountX), y: Math.floor(Math.random() * tileCountY) }; } while (isFoodOnSnake(newFoodPosition)); food = newFoodPosition; }
+
+
+        // --- Event Listeners (remain the same) ---
+        document.addEventListener('keydown', handleKeyDown);
+        restartButton.addEventListener('click', initializeGame);
+        pauseButton.addEventListener('click', togglePause);
+        changeShapeButton.addEventListener('click', handleChangeShapeClick);
+        speedButtons.forEach(button => { button.addEventListener('click', handleSpeedButtonClick); });
+
+        // --- Start Game ---
+        initializeGame();
+
+    </script>
+</body>
+</html>
